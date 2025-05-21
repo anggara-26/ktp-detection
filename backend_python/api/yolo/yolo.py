@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 matplotlib.use('Agg')  # Use a non-interactive backend
 import numpy as np
 from pathlib import Path
-# import easyocr
+import easyocr
 from keras._tf_keras.keras.preprocessing import image
 from keras._tf_keras.keras.preprocessing.image import array_to_img, img_to_array
 from keras._tf_keras.keras.models import load_model
@@ -64,13 +64,13 @@ class YOLODetector:
             label = obj['label']
             if label in max_confidences:
                 if max_confidences[label] is None or obj['confidence'] > max_confidences[label]['confidence']:
-                    max_confidences[label] = obj
-
-        # preprocess image
-        
+                    max_confidences[label] = obj        
 
         extracted_data = {}
+        list_of_images = []
         for label, obj in max_confidences.items():
+            if label == 'foto':
+                continue
             if obj:
                 x_min = int(obj['x_min'])
                 y_min = int(obj['y_min'])
@@ -79,11 +79,35 @@ class YOLODetector:
 
                 # Crop the image to the bounding box of the label
                 cropped_image = image[y_min:y_max, x_min:x_max]
-                _, buffer = cv2.imencode('.png', cropped_image)
+                cropped_image_gray = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
+                blurred = cv2.GaussianBlur(cropped_image_gray, (5, 5), 0)
+                # T, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV)
+                binary = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+                # final = cv2.bitwise_and(cropped_image, cropped_image, mask=thresh)
+                # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                # enhanced = clahe.apply(cropped_image)
+                # blurred = cv2.GaussianBlur(enhanced, (3, 3), 0)
+                # image = cv2.cvtColor(binary, cv2.COLOR_GRAY2RGB)
+                # letterboxed = letterbox_image(image, (640, 640))
+                # normalized = letterboxed.astype('float32') / 255.0
+                # denoised = cv2.GaussianBlur(image, (3, 3), 0)
+                # thresh = cv2.threshold(cropped_image, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+                # dist = cv2.distanceTransform(thresh, cv2.DIST_L2, 5)
+                # dist = cv2.normalize(dist, dist, 0, 1.0, cv2.NORM_MINMAX)
+                # dist = (dist * 255).astype("uint8")
+                # dist = cv2.GaussianBlur(dist, (5, 5), 0)
+                # dist = cv2.threshold(dist, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+                _, buffer = cv2.imencode('.png', binary)
+                cropped_image = base64.b64encode(buffer).decode('utf-8')
+                list_of_images.append(cropped_image)
                 io_buf = io.BytesIO(buffer)
 
                 # Perform OCR using keras_ocr
                 try:
+                    # prediction = easyocr.Reader(['id', 'en'], gpu=False)
+                    # prediction_groups = prediction.readtext(binary, detail=0, paragraph=True)
+                    # if prediction_groups and len(prediction_groups) > 0:
+                    #     extracted_data[label] = " ".join(prediction_groups[0])
                     prediction_groups = pipeline.recognize([keras_ocr.tools.read(io_buf)])
                     if prediction_groups and len(prediction_groups[0]) > 0:
                         extracted_data[label] = " ".join([text for text, _ in prediction_groups[0]])
@@ -92,14 +116,34 @@ class YOLODetector:
 
         print('Extracted Data:', extracted_data)
 
-        if max_confidences['pekerjaan']:
-            x_min = int(max_confidences['pekerjaan']['x_min'])
-            y_min = int(max_confidences['pekerjaan']['y_min'])
-            x_max = int(max_confidences['pekerjaan']['x_max'])
-            y_max = int(max_confidences['pekerjaan']['y_max'])
+        if max_confidences['foto']:
+            x_min = int(max_confidences['foto']['x_min'])
+            y_min = int(max_confidences['foto']['y_min'])
+            x_max = int(max_confidences['foto']['x_max'])
+            y_max = int(max_confidences['foto']['y_max'])
 
             # Crop the image to the bounding box of 'foto'
+            # foto_image = image[y_min:y_max, x_min:x_max]
             foto_image = image[y_min:y_max, x_min:x_max]
+            # foto_image = cv2.cvtColor(foto_image, cv2.COLOR_BGR2GRAY)
+            # blurred = cv2.GaussianBlur(foto_image, (5, 5), 0)
+            # T, thresh = cv2.threshold(blurred, 120, 255, cv2.THRESH_BINARY_INV)
+            # final = cv2.bitwise_and(foto_image, foto_image, mask=thresh)
+            # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            # enhanced = clahe.apply(foto_image)
+            # blurred = cv2.GaussianBlur(foto_image, (3, 3), 0)
+            # binary = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+            # image = cv2.cvtColor(binary, cv2.COLOR_GRAY2RGB)
+            # letterboxed = letterbox_image(image, (640, 640))
+            # normalized = letterboxed.astype('float32') / 255.0
+            # denoised = cv2.GaussianBlur(image, (3, 3), 0)
+            # blur = cv2.GaussianBlur(foto_image, (5, 5), 0)
+            # thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+            # dist = cv2.distanceTransform(thresh, cv2.DIST_L2, 5)
+            # dist = cv2.normalize(dist, dist, 0, 1.0, cv2.NORM_MINMAX)
+            # dist = (dist * 255).astype("uint8")
+            # dist = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+
 
             # Convert cropped image to base64
             _, buffer = cv2.imencode('.png', foto_image)
@@ -120,7 +164,7 @@ class YOLODetector:
         plt.close()
         # Close the plot to free memory
 
-        return [detected_objects, foto_image, base64_image]
+        return [extracted_data, foto_image, base64_image, list_of_images]
 
     def run_card_detection(self, image_path):
         """

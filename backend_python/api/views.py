@@ -15,12 +15,13 @@ class IDCardOcrView(APIView):
     detector = YOLODetector()
 
     def post(self, request, format=None):
+        print("Request data:", request.data)
         serializer = ImageUploadSerializer(data=request.data)
         if serializer.is_valid():
             image_upload = serializer.save()
 
             try:
-                detection_result, foto_image, image = self.detector.run_detection(image_path=image_upload.image_file.path, confidence_threshold=image_upload.confidence_threshold)
+                extracted_data, foto_image, image, list_of_images = self.detector.run_detection(image_path=image_upload.image_file.path, confidence_threshold=image_upload.confidence_threshold)
                 image_upload.status = ImageUpload.STATUS_COMPLETED
                 image_upload.save()
             except Exception as e:
@@ -28,16 +29,16 @@ class IDCardOcrView(APIView):
                 image_upload.save()
                 return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-            for detection in detection_result:
-                Detections.objects.create(
-                    object_detection=image_upload,
-                    label=detection['label'],
-                    confidence=detection['confidence'],
-                    x_min=detection['x_min'],
-                    x_max=detection['x_max'],
-                    y_min=detection['y_min'],
-                    y_max=detection['y_max']
-                )
+            # for detection in detection_result:
+            #     Detections.objects.create(
+            #         object_detection=image_upload,
+            #         label=detection['label'],
+            #         confidence=detection['confidence'],
+            #         x_min=detection['x_min'],
+            #         x_max=detection['x_max'],
+            #         y_min=detection['y_min'],
+            #         y_max=detection['y_max']
+            #     )
 
-            return Response(foto_image, status=status.HTTP_201_CREATED)
+            return Response({ "extracted_data": extracted_data, "foto_image": foto_image, "ktp_image": image, "list_of_images": list_of_images }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
