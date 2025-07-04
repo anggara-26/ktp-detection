@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+const API_URL = "https://dd38-103-47-133-130.ngrok-free.app";
+
 function App() {
   const [image, setImage] = useState<File | null>(null);
   const [response, setResponse] = useState<{
@@ -34,15 +36,18 @@ function App() {
     formData.append("image_file", image);
     formData.append("confidence_threshold", "0.5");
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout (2 minutes)
+
     try {
       setIsLoading(true);
-      const response = await fetch("http://127.0.0.1:8000/api/ocr/", {
+      const response = await fetch(`${API_URL}/api/ocr/`, {
         method: "POST",
         body: formData,
-        // headers: {
-        //   "Content-Type": "application/form-data",
-        // },
+        signal: controller.signal,
+        // Do NOT set headers here; browser will set correct Content-Type and boundary
       });
+      clearTimeout(timeoutId);
 
       const responseJson = await response.json();
 
@@ -52,7 +57,16 @@ function App() {
 
       setResponse(responseJson);
       console.log("Response:", responseJson);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === "AbortError") {
+        alert("Request timed out. The server may be slow or unresponsive.");
+      } else if (error.message && error.message.includes("Failed to fetch")) {
+        alert(
+          "Network error: Could not connect to the server. Please check your connection or server status."
+        );
+      } else {
+        alert("Error: " + (error.message || error));
+      }
       console.error("Error:", error);
     } finally {
       setIsLoading(false);
@@ -95,7 +109,9 @@ function App() {
           }}
         />
         <input type="number" name="treshold" />
-        <button type="submit">Submit</button>
+        <button type="submit" disabled={isLoading}>
+          Submit
+        </button>
         <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>
           {isLoading && <p>Loading...</p>}
           {response && !isLoading && (

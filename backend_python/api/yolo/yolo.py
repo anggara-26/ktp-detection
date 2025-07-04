@@ -6,16 +6,20 @@ import matplotlib
 from matplotlib import pyplot as plt
 matplotlib.use('Agg')  # Use a non-interactive backend
 import numpy as np
-from pathlib import Path
-import easyocr
-from keras._tf_keras.keras.preprocessing import image
-from keras._tf_keras.keras.preprocessing.image import array_to_img, img_to_array
-from keras._tf_keras.keras.models import load_model
-import keras_ocr
+# from pathlib import Path
+from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+# import easyocr
+# from keras._tf_keras.keras.preprocessing import image
+# from keras._tf_keras.keras.preprocessing.image import array_to_img, img_to_array
+# from keras._tf_keras.keras.models import load_model
+# import keras_ocr
 
 from backend_python.settings import BASE_DIR
+import Levenshtein
 
-pipeline = keras_ocr.pipeline.Pipeline()
+model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-stage1")
+processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-stage1")
+# pipeline = keras_ocr.pipeline.Pipeline()
 class YOLODetector:
     def __init__(self, attributes_model_path=f"{BASE_DIR}/api/yolo/weights/best.pt", card_model_path=f"{BASE_DIR}/api/yolo/weights/segment_model.pt"):
         # Load the pretrained YOLO model
@@ -55,7 +59,7 @@ class YOLODetector:
         labels_of_interest = [
             'foto', 'nik', 'nama', 'ttl', 'jeniskelamin', 'alamat', 
             'rtrw', 'keldesa', 'kecamatan', 'agama', 
-            'statuskawin', 'pekerjaan', 'kewarganegaraan'
+            'statuskawin', 'pekerjaan', 'kewarganegaraan', 'golongandarah'
         ]
         
         max_confidences = {label: None for label in labels_of_interest}
@@ -68,6 +72,7 @@ class YOLODetector:
 
         extracted_data = {}
         list_of_images = []
+        list_of_iobuf_and_labels = []
         for label, obj in max_confidences.items():
             if label == 'foto':
                 continue
@@ -79,10 +84,10 @@ class YOLODetector:
 
                 # Crop the image to the bounding box of the label
                 cropped_image = image[y_min:y_max, x_min:x_max]
-                cropped_image_gray = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
-                blurred = cv2.GaussianBlur(cropped_image_gray, (5, 5), 0)
+                # cropped_image_gray = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
+                # blurred = cv2.GaussianBlur(cropped_image_gray, (5, 5), 0)
                 # T, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV)
-                binary = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+                # binary = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
                 # final = cv2.bitwise_and(cropped_image, cropped_image, mask=thresh)
                 # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
                 # enhanced = clahe.apply(cropped_image)
@@ -97,23 +102,41 @@ class YOLODetector:
                 # dist = (dist * 255).astype("uint8")
                 # dist = cv2.GaussianBlur(dist, (5, 5), 0)
                 # dist = cv2.threshold(dist, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
-                _, buffer = cv2.imencode('.png', binary)
+                _, buffer = cv2.imencode('.png', cropped_image)
                 cropped_image = base64.b64encode(buffer).decode('utf-8')
                 list_of_images.append(cropped_image)
                 io_buf = io.BytesIO(buffer)
+                list_of_iobuf_and_labels.append((io_buf, label))
 
-                # Perform OCR using keras_ocr
-                try:
-                    # prediction = easyocr.Reader(['id', 'en'], gpu=False)
-                    # prediction_groups = prediction.readtext(binary, detail=0, paragraph=True)
-                    # if prediction_groups and len(prediction_groups) > 0:
-                    #     extracted_data[label] = " ".join(prediction_groups[0])
-                    prediction_groups = pipeline.recognize([keras_ocr.tools.read(io_buf)])
-                    if prediction_groups and len(prediction_groups[0]) > 0:
-                        extracted_data[label] = " ".join([text for text, _ in prediction_groups[0]])
-                except Exception as e:
-                    print(f"Error processing label {label}: {e}")
+                # # Perform OCR using keras_ocr
+                # try:
+                #     # prediction = easyocr.Reader(['id', 'en'], gpu=False)
+                #     # prediction_groups = prediction.readtext(binary, detail=0, paragraph=True)
+                #     # if prediction_groups and len(prediction_groups) > 0:
+                #     #     extracted_data[label] = " ".join(prediction_groups[0])
+                #     # prediction_groups = pipeline.recognize([keras_ocr.tools.read(io_buf)])
+                #     if prediction_groups and len(prediction_groups[0]) > 0:
+                #         extracted_data[label] = " ".join([text for text, _ in prediction_groups[0]])
+                # except Exception as e:
+                #     print(f"Error processing label {label}: {e}")
+        
+        # predict batch of images using TrOCR
+        # Convert list of images to PIL format
+        images = [cv2.cvtColor(cv2.imdecode(np.frombuffer(io_buf.getvalue(), np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB) for io_buf, _ in list_of_iobuf_and_labels]
+        inputs = processor(images=images, return_tensors="pt", padding=True)
+        outputs = model.generate(**inputs)
+        # Decode the outputs
+        decoded_outputs = processor.batch_decode(outputs, skip_special_tokens=True)
+        # Map the decoded outputs to the corresponding labels
+        for i, (io_buf, label) in enumerate(list_of_iobuf_and_labels):
+            if label in max_confidences and max_confidences[label] is not None:
+                extracted_data[label] = decoded_outputs[i]
+            else:
+                extracted_data[label] = None
 
+        # Print the extracted data
+        print('Detected Objects:', detected_objects)
+        print('Max Confidences:', max_confidences)
         print('Extracted Data:', extracted_data)
 
         if max_confidences['foto']:
@@ -249,4 +272,16 @@ class YOLODetector:
         :return: Cropped image.
         """
         return image[y_min:y_max, x_min:x_max]
-        
+
+    def levenshtein_distance(str1, str2):
+        """
+        Calculate the Levenshtein distance between two strings.
+        :param str1: First string.
+        :param str2: Second string.
+        :return: Levenshtein distance (int).
+        """
+        return Levenshtein.distance(str1, str2)
+
+    # Example usage in YOLODetector (add this where you want to compare OCR results):
+    # distance = levenshtein_distance('ocr_result', 'ground_truth')
+    # print(f'Levenshtein distance: {distance}')

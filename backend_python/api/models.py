@@ -36,3 +36,46 @@ class Detections(models.Model):
 
     def __str__(self):
         return f"{self.label} ({self.confidence})"
+
+class Countries(models.Model):
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, unique=True)
+
+    def __str__(self):
+        return self.name
+    
+class Provinces(models.Model):
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, unique=True)
+    code = models.CharField(max_length=20, unique=True)
+    country = models.ForeignKey(Countries, on_delete=models.CASCADE, related_name='provinces')
+
+    def __str__(self):
+        return self.name
+    
+class Cities(models.Model):
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, unique=True)
+    code = models.CharField(max_length=20, unique=True)
+    province = models.ForeignKey(Provinces, on_delete=models.CASCADE, related_name='cities')
+
+    def __str__(self):
+        return self.name
+
+class Districts(models.Model):
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, unique=True)
+    code = models.CharField(max_length=20, unique=True)
+    city = models.ForeignKey(Cities, on_delete=models.CASCADE, related_name='districts')
+
+    def __str__(self):
+        return self.name
+    
+class SubDistricts(models.Model):
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, unique=True)
+    code = models.CharField(max_length=20, unique=True)
+    district = models.ForeignKey(Districts, on_delete=models.CASCADE, related_name='subdistricts')
+
+    def __str__(self):
+        return self.name

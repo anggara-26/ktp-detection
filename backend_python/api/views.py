@@ -40,5 +40,5 @@ class IDCardOcrView(APIView):
             #         y_max=detection['y_max']
             #     )
 
-            return Response({ "extracted_data": extracted_data, "foto_image": foto_image, "ktp_image": image, "list_of_images": list_of_images }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({ "data": {"extracted_data": extracted_data, "foto_image": foto_image, "ktp_image": image}, "code": status.HTTP_200_OK }, status=status.HTTP_200_OK)
+        return Response({ "code": status.HTTP_400_BAD_REQUEST, "message": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
